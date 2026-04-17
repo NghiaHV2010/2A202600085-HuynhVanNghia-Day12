@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: ai-agent-production
+    runtime: docker
+    region: singapore
+    plan: starter
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: APP_VERSION
+        value: "1.0.0"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: AGENT_API_KEY
+        generateValue: true
+      - key: MONTHLY_BUDGET_USD
+        value: "10.0"
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "10"
+      - key: REQUIRE_REDIS
+        value: "true"
+      - key: REDIS_URL
+        sync: false

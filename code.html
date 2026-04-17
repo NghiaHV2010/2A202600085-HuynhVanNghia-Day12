@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html class="light" lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Claude Chat - Editorial Console</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap"
+    rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+    rel="stylesheet" />
+  <script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            surface: "#fbf9f2",
+            background: "#fbf9f2",
+            "on-background": "#1b1c18",
+            primary: "#9a4021",
+            "primary-container": "#b95837",
+            "on-primary": "#ffffff",
+            secondary: "#5f5e5a",
+            tertiary: "#5c5c55",
+            "surface-container-low": "#f5f4ed",
+            "surface-container": "#efeee7",
+            "surface-container-high": "#e9e8e1",
+            "surface-container-highest": "#e3e3dc",
+            "surface-container-lowest": "#ffffff",
+            "outline-variant": "#dcc1b8",
+            error: "#ba1a1a"
+          },
+          borderRadius: {
+            DEFAULT: "0.25rem",
+            xl: "0.75rem",
+            "2xl": "1rem",
+            full: "9999px"
+          },
+          fontFamily: {
+            headline: ["Newsreader", "serif"],
+            body: ["Inter", "sans-serif"]
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    :root {
+      color-scheme: light;
+    }
+
+    body {
+      font-family: "Inter", sans-serif;
+      background-color: #fbf9f2;
+      color: #1b1c18;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    .font-headline {
+      font-family: "Newsreader", serif;
+    }
+
+    .material-symbols-outlined {
+      font-variation-settings: "FILL" 0, "wght" 350, "GRAD" 0, "opsz" 24;
+    }
+
+    .ghost-border {
+      box-shadow: inset 0 0 0 1px rgba(220, 193, 184, 0.25);
+    }
+
+    .ambient-shadow {
+      box-shadow: 0 4px 24px rgba(27, 28, 24, 0.05);
+    }
+
+    .btn-gradient {
+      background: linear-gradient(180deg, #9a4021 0%, #b95837 100%);
+    }
+
+    .status-pill {
+      border-radius: 9999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      font-size: 0.75rem;
+      line-height: 1rem;
+      font-weight: 600;
+      padding: 0.375rem 0.625rem;
+      letter-spacing: 0.01em;
+      transition: all 300ms ease-in-out;
+    }
+
+    .status-pill[data-tone="idle"] {
+      background: rgba(92, 92, 85, 0.12);
+      color: #474740;
+    }
+
+    .status-pill[data-tone="ok"] {
+      background: rgba(74, 103, 65, 0.14);
+      color: #315228;
+    }
+
+    .status-pill[data-tone="warn"] {
+      background: rgba(185, 88, 55, 0.16);
+      color: #7b3117;
+    }
+
+    .status-pill[data-tone="error"] {
+      background: rgba(186, 26, 26, 0.15);
+      color: #7e0a0a;
+    }
+
+    .message-enter {
+      animation: messageIn 320ms ease-out both;
+    }
+
+    @keyframes messageIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .chat-scroll::-webkit-scrollbar {
+      width: 10px;
+    }
+
+    .chat-scroll::-webkit-scrollbar-thumb {
+      background: rgba(137, 114, 107, 0.35);
+      border-radius: 999px;
+      border: 2px solid transparent;
+      background-clip: content-box;
+    }
+
+    .chat-scroll::-webkit-scrollbar-track {
+      background: rgba(245, 244, 237, 0.9);
+    }
+  </style>
+</head>
+
+<body class="bg-surface text-on-background min-h-screen selection:bg-primary/20 selection:text-primary">
+  <nav class="fixed top-0 z-50 w-full bg-surface/85 backdrop-blur-xl border-b border-outline-variant/30">
+    <div class="mx-auto max-w-screen-2xl px-6 py-4 flex items-center justify-between gap-4">
+      <div class="flex items-center gap-8">
+        <a href="#" class="font-headline text-3xl tracking-tight text-on-background leading-none">Claude</a>
+        <div class="hidden md:flex items-center gap-6 text-sm text-secondary font-medium">
+          <span class="text-primary border-b border-primary pb-1">Chat Console</span>
+          <span class="opacity-80">Literary Modernist UI</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <span id="connectionBadge" class="status-pill" data-tone="idle">
+          <span class="material-symbols-outlined text-[14px]">wifi</span>
+          Offline
+        </span>
+      </div>
+    </div>
+  </nav>
+
+  <main class="pt-28 pb-14">
+    <section class="mx-auto max-w-screen-2xl px-6">
+      <div class="grid gap-8 lg:grid-cols-[21rem,1fr] xl:grid-cols-[24rem,1fr]">
+        <aside
+          class="bg-surface-container-lowest ambient-shadow ghost-border rounded-2xl p-6 lg:sticky lg:top-28 h-fit space-y-7">
+          <div class="space-y-3">
+            <p class="text-xs uppercase tracking-[0.2em] text-primary font-semibold">The Digital Curator</p>
+            <h1 class="font-headline text-4xl leading-[1.02] text-on-background">Editorial Chat Desk</h1>
+            <p class="text-sm leading-relaxed text-secondary">
+              Configure the local API once, then run chat and diagnostics without leaving this page.
+            </p>
+          </div>
+
+          <div class="space-y-4">
+            <label class="block text-xs uppercase tracking-wider font-semibold text-secondary" for="apiBaseInput">API
+              base URL</label>
+            <input id="apiBaseInput"
+              class="w-full rounded-xl border-0 bg-surface-container-low text-on-background text-sm focus:ring-2 focus:ring-primary/70"
+              type="text" placeholder="http://localhost:8000" />
+
+            <label class="block text-xs uppercase tracking-wider font-semibold text-secondary"
+              for="apiKeyInput">X-API-Key</label>
+            <input id="apiKeyInput"
+              class="w-full rounded-xl border-0 bg-surface-container-low text-on-background text-sm focus:ring-2 focus:ring-primary/70"
+              type="password" placeholder="dev-key-change-me-in-production" />
+
+            <label class="block text-xs uppercase tracking-wider font-semibold text-secondary" for="userIdInput">User
+              ID</label>
+            <div class="flex gap-2">
+              <input id="userIdInput"
+                class="w-full rounded-xl border-0 bg-surface-container-low text-on-background text-sm focus:ring-2 focus:ring-primary/70"
+                type="text" />
+              <button id="newSessionBtn" type="button"
+                class="rounded-xl px-3 py-2 bg-surface-container-high text-on-background text-xs font-semibold hover:bg-surface-container-highest transition-colors">New</button>
+            </div>
+          </div>
+
+          <div class="rounded-2xl bg-surface-container-high p-4 space-y-3 ghost-border">
+            <div class="flex items-center justify-between">
+              <span class="text-xs uppercase tracking-wider text-secondary font-semibold">Health</span>
+              <span id="healthStatus" class="status-pill" data-tone="idle">Unknown</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-xs uppercase tracking-wider text-secondary font-semibold">Ready</span>
+              <span id="readyStatus" class="status-pill" data-tone="idle">Unknown</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2 pt-1">
+              <button id="checkHealthBtn" type="button"
+                class="rounded-xl bg-surface-container-lowest px-3 py-2 text-xs font-semibold hover:bg-surface transition-colors">
+                Check /health
+              </button>
+              <button id="checkReadyBtn" type="button"
+                class="rounded-xl bg-surface-container-lowest px-3 py-2 text-xs font-semibold hover:bg-surface transition-colors">
+                Check /ready
+              </button>
+            </div>
+          </div>
+
+          <div class="rounded-r-xl bg-surface-container-highest p-4 border-l-4 border-tertiary space-y-3">
+            <h2 class="font-headline text-xl text-on-background">Diagnostics</h2>
+            <p class="text-xs text-secondary leading-relaxed">
+              Run quick status tests from the same browser context. This helps confirm 401, 429, and 503 behavior.
+            </p>
+            <div class="flex flex-wrap gap-2">
+              <button id="test401Btn" type="button"
+                class="rounded-lg px-3 py-1.5 bg-surface text-xs font-semibold hover:bg-surface-container-low transition-colors">Test
+                401</button>
+              <button id="test429Btn" type="button"
+                class="rounded-lg px-3 py-1.5 bg-surface text-xs font-semibold hover:bg-surface-container-low transition-colors">Test
+                429</button>
+              <button id="test503HintBtn" type="button"
+                class="rounded-lg px-3 py-1.5 bg-surface text-xs font-semibold hover:bg-surface-container-low transition-colors">503
+                Guide</button>
+            </div>
+            <pre id="diagnosticOutput"
+              class="whitespace-pre-wrap text-[11px] leading-relaxed text-secondary bg-surface/70 rounded-xl p-3 min-h-14"></pre>
+          </div>
+
+          <p class="text-[11px] text-secondary leading-relaxed">
+            Tip: serve this file from http://localhost:3000 or allow your origin in backend CORS settings.
+          </p>
+        </aside>
+
+        <section
+          class="bg-surface-container-lowest ambient-shadow ghost-border rounded-2xl min-h-[78vh] flex flex-col overflow-hidden">
+          <header
+            class="px-6 py-5 border-b border-outline-variant/30 flex flex-wrap items-center justify-between gap-3 bg-surface-container-low">
+            <div>
+              <h2 class="font-headline text-3xl leading-none text-on-background">Conversation</h2>
+              <p class="text-sm text-secondary mt-1">Intentional, paced dialogue for complex tasks.</p>
+            </div>
+            <div class="text-right">
+              <p class="text-[11px] uppercase tracking-wider text-secondary">Active session</p>
+              <p id="sessionDisplay" class="text-sm font-semibold text-on-background"></p>
+            </div>
+          </header>
+
+          <div id="messages"
+            class="chat-scroll flex-1 overflow-y-auto px-6 py-7 space-y-6 bg-[radial-gradient(circle_at_top,_rgba(185,88,55,0.05),_transparent_42%)]">
+            <article class="message-enter flex justify-start">
+              <div
+                class="max-w-2xl rounded-2xl rounded-tl-sm bg-surface-container-highest text-on-background px-4 py-3 ghost-border">
+                <p class="text-[11px] uppercase tracking-wider text-secondary font-semibold mb-2">Claude</p>
+                <p class="text-sm leading-relaxed">
+                  Welcome to the editorial chat desk. Add your API key, keep your user_id stable, and I will preserve
+                  context across messages.
+                </p>
+              </div>
+            </article>
+          </div>
+
+          <div class="border-t border-outline-variant/30 p-6 bg-surface-container-low space-y-4">
+            <div class="flex flex-wrap gap-2">
+              <button
+                class="quick-prompt rounded-full bg-surface-container-high px-3 py-1.5 text-xs font-medium hover:bg-surface-container-highest transition-colors"
+                data-prompt="Summarize what this backend does.">Summarize backend</button>
+              <button
+                class="quick-prompt rounded-full bg-surface-container-high px-3 py-1.5 text-xs font-medium hover:bg-surface-container-highest transition-colors"
+                data-prompt="How do I deploy this service to Railway?">Deployment steps</button>
+              <button
+                class="quick-prompt rounded-full bg-surface-container-high px-3 py-1.5 text-xs font-medium hover:bg-surface-container-highest transition-colors"
+                data-prompt="What did I just say?">Context recall</button>
+            </div>
+
+            <form id="composer" class="space-y-3">
+              <label for="questionInput"
+                class="text-xs uppercase tracking-wider text-secondary font-semibold">Prompt</label>
+              <textarea id="questionInput" rows="4"
+                class="w-full rounded-2xl border-0 bg-surface px-4 py-3 text-sm leading-relaxed text-on-background placeholder:text-secondary/70 focus:ring-2 focus:ring-primary/70"
+                placeholder="Ask a complex question..."></textarea>
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <p id="sendHint" class="text-xs text-secondary">Shift+Enter for a new line. Enter to send.</p>
+                <button id="sendBtn" type="submit"
+                  class="btn-gradient text-on-primary px-6 py-3 rounded-xl font-semibold text-sm hover:opacity-90 transition-opacity shadow-[0_8px_20px_rgba(154,64,33,0.25)]">
+                  Send to Claude
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <footer class="border-t border-outline-variant/25 bg-surface-container-low mt-6">
+    <div
+      class="mx-auto max-w-screen-2xl px-6 py-10 text-xs text-secondary flex flex-col sm:flex-row justify-between gap-3">
+      <p>Editorial chat UI for Day 12 deployment lab.</p>
+      <p>Use local API endpoints: /ask, /health, /ready.</p>
+    </div>
+  </footer>
+
+  <script>
+    (() =>
+    {
+      const storagePrefix = "editorial-chat.";
+      const state = {
+        apiBase: localStorage.getItem(storagePrefix + "apiBase") || "http://localhost:8000",
+        apiKey: localStorage.getItem(storagePrefix + "apiKey") || "",
+        userId: localStorage.getItem(storagePrefix + "userId") || generateUserId(),
+        busy: false
+      };
+
+      const refs = {
+        apiBaseInput: document.getElementById("apiBaseInput"),
+        apiKeyInput: document.getElementById("apiKeyInput"),
+        userIdInput: document.getElementById("userIdInput"),
+        newSessionBtn: document.getElementById("newSessionBtn"),
+        checkHealthBtn: document.getElementById("checkHealthBtn"),
+        checkReadyBtn: document.getElementById("checkReadyBtn"),
+        test401Btn: document.getElementById("test401Btn"),
+        test429Btn: document.getElementById("test429Btn"),
+        test503HintBtn: document.getElementById("test503HintBtn"),
+        diagnosticOutput: document.getElementById("diagnosticOutput"),
+        healthStatus: document.getElementById("healthStatus"),
+        readyStatus: document.getElementById("readyStatus"),
+        connectionBadge: document.getElementById("connectionBadge"),
+        sessionDisplay: document.getElementById("sessionDisplay"),
+        messages: document.getElementById("messages"),
+        composer: document.getElementById("composer"),
+        questionInput: document.getElementById("questionInput"),
+        sendBtn: document.getElementById("sendBtn"),
+        sendHint: document.getElementById("sendHint"),
+        quickPrompts: Array.from(document.querySelectorAll(".quick-prompt"))
+      };
+
+      hydrateInputs();
+      bindEvents();
+      void refreshStatus();
+
+      function bindEvents()
+      {
+        refs.apiBaseInput.addEventListener("input", persistFromInputs);
+        refs.apiKeyInput.addEventListener("input", persistFromInputs);
+        refs.userIdInput.addEventListener("input", persistFromInputs);
+
+        refs.newSessionBtn.addEventListener("click", () =>
+        {
+          state.userId = generateUserId();
+          refs.userIdInput.value = state.userId;
+          persistFromInputs();
+          appendSystemMessage("Started a new session. Future messages use a fresh user_id.");
+        });
+
+        refs.checkHealthBtn.addEventListener("click", () => void checkHealth());
+        refs.checkReadyBtn.addEventListener("click", () => void checkReady());
+
+        refs.test401Btn.addEventListener("click", () => void run401Test());
+        refs.test429Btn.addEventListener("click", () => void run429Test());
+        refs.test503HintBtn.addEventListener("click", () =>
+        {
+          refs.diagnosticOutput.textContent = "To force 503 on /ready: run 'docker compose stop redis', then check /ready again.";
+        });
+
+        refs.composer.addEventListener("submit", (event) =>
+        {
+          event.preventDefault();
+          void sendMessage();
+        });
+
+        refs.questionInput.addEventListener("keydown", (event) =>
+        {
+          if (event.key === "Enter" && !event.shiftKey)
+          {
+            event.preventDefault();
+            void sendMessage();
+          }
+        });
+
+        refs.quickPrompts.forEach((button) =>
+        {
+          button.addEventListener("click", () =>
+          {
+            refs.questionInput.value = button.dataset.prompt || "";
+            refs.questionInput.focus();
+          });
+        });
+      }
+
+      function hydrateInputs()
+      {
+        refs.apiBaseInput.value = state.apiBase;
+        refs.apiKeyInput.value = state.apiKey;
+        refs.userIdInput.value = state.userId;
+        refs.sessionDisplay.textContent = state.userId;
+      }
+
+      function persistFromInputs()
+      {
+        state.apiBase = normalizeBase(refs.apiBaseInput.value);
+        state.apiKey = refs.apiKeyInput.value.trim();
+        state.userId = refs.userIdInput.value.trim() || generateUserId();
+
+        refs.apiBaseInput.value = state.apiBase;
+        refs.userIdInput.value = state.userId;
+        refs.sessionDisplay.textContent = state.userId;
+
+        localStorage.setItem(storagePrefix + "apiBase", state.apiBase);
+        localStorage.setItem(storagePrefix + "apiKey", state.apiKey);
+        localStorage.setItem(storagePrefix + "userId", state.userId);
+      }
+
+      function normalizeBase(value)
+      {
+        const raw = (value || "").trim();
+        if (!raw)
+        {
+          return "http://localhost:8000";
+        }
+        return raw.replace(/\/+$/, "");
+      }
+
+      function generateUserId()
+      {
+        const random = Math.random().toString(36).slice(2, 8);
+        return "reader-" + random + "-" + Date.now().toString(36).slice(-4);
+      }
+
+      async function refreshStatus()
+      {
+        await checkHealth(false);
+        await checkReady(false);
+      }
+
+      async function checkHealth(report = true)
+      {
+        persistFromInputs();
+        const result = await fetchStatus("/health");
+        if (result.ok && result.payload)
+        {
+          const tone = result.payload.status === "ok" ? "ok" : "warn";
+          setStatus(refs.healthStatus, (result.payload.status || "unknown").toUpperCase(), tone);
+          setStatus(refs.connectionBadge, "Online", "ok");
+          if (report)
+          {
+            refs.diagnosticOutput.textContent = "/health -> " + JSON.stringify(result.payload, null, 2);
+          }
+        } else
+        {
+          setStatus(refs.healthStatus, "DOWN", "error");
+          setStatus(refs.connectionBadge, "Offline", "error");
+          if (report)
+          {
+            refs.diagnosticOutput.textContent = "/health failed -> HTTP " + result.status + "\n" + result.detail;
+          }
+        }
+      }
+
+      async function checkReady(report = true)
+      {
+        persistFromInputs();
+        const result = await fetchStatus("/ready");
+        if (result.ok)
+        {
+          setStatus(refs.readyStatus, "READY", "ok");
+          if (report)
+          {
+            refs.diagnosticOutput.textContent = "/ready -> " + JSON.stringify(result.payload, null, 2);
+          }
+        } else
+        {
+          const tone = result.status === 503 ? "warn" : "error";
+          setStatus(refs.readyStatus, "NOT READY", tone);
+          if (report)
+          {
+            refs.diagnosticOutput.textContent = "/ready failed -> HTTP " + result.status + "\n" + result.detail;
+          }
+        }
+      }
+
+      async function run401Test()
+      {
+        persistFromInputs();
+        const body = JSON.stringify({ user_id: "diag-401", question: "hello" });
+        const result = await fetchStatus("/ask", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body
+        });
+        refs.diagnosticOutput.textContent = "401 test result -> HTTP " + result.status;
+      }
+
+      async function run429Test()
+      {
+        persistFromInputs();
+        if (!state.apiKey)
+        {
+          refs.diagnosticOutput.textContent = "Set X-API-Key before running 429 test.";
+          return;
+        }
+
+        const tempUser = "diag-rate-" + Date.now().toString(36);
+        const counters = {};
+
+        for (let i = 1; i <= 40; i += 1)
+        {
+          const body = JSON.stringify({ user_id: tempUser, question: "spam " + i });
+          const result = await fetchStatus("/ask", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-API-Key": state.apiKey
+            },
+            body
+          });
+          counters[result.status] = (counters[result.status] || 0) + 1;
+        }
+
+        refs.diagnosticOutput.textContent = "429 test counts -> " + JSON.stringify(counters, null, 2);
+      }
+
+      async function sendMessage()
+      {
+        if (state.busy)
+        {
+          return;
+        }
+
+        persistFromInputs();
+        const question = refs.questionInput.value.trim();
+
+        if (!question)
+        {
+          refs.sendHint.textContent = "Write a question before sending.";
+          return;
+        }
+
+        if (!state.apiKey)
+        {
+          refs.sendHint.textContent = "X-API-Key is required. Add it in the left panel.";
+          refs.apiKeyInput.focus();
+          return;
+        }
+
+        const userArticle = appendMessage("user", question, "user_id: " + state.userId);
+        refs.questionInput.value = "";
+        refs.sendHint.textContent = "Sending...";
+
+        const pendingArticle = appendMessage("assistant", "Thinking...", "Contacting /ask", true);
+
+        setComposerBusy(true);
+
+        try
+        {
+          const body = JSON.stringify({
+            user_id: state.userId,
+            question
+          });
+
+          const result = await fetchStatus("/ask", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-API-Key": state.apiKey
+            },
+            body
+          });
+
+          if (result.ok && result.payload)
+          {
+            fillPendingMessage(
+              pendingArticle,
+              result.payload.answer || "No answer returned.",
+              "model: " + (result.payload.model || "unknown") + " | served_by: " + (result.payload.served_by || "n/a")
+            );
+            refs.sendHint.textContent = "Sent successfully.";
+            setStatus(refs.connectionBadge, "Online", "ok");
+            await checkReady(false);
+          } else
+          {
+            const msg = friendlyError(result.status, result.detail);
+            fillPendingMessage(pendingArticle, msg, "HTTP " + result.status, false);
+            refs.sendHint.textContent = "Request failed.";
+            setStatus(refs.connectionBadge, "Error", "warn");
+          }
+
+          userArticle.article.scrollIntoView({ behavior: "smooth", block: "start" });
+        } catch (error)
+        {
+          fillPendingMessage(
+            pendingArticle,
+            "Client error: unexpected issue while processing this message.",
+            String(error),
+            false
+          );
+          refs.sendHint.textContent = "Client-side error.";
+          setStatus(refs.connectionBadge, "Error", "warn");
+        } finally
+        {
+          setComposerBusy(false);
+        }
+      }
+
+      function setComposerBusy(isBusy)
+      {
+        state.busy = isBusy;
+        refs.sendBtn.disabled = isBusy;
+        refs.sendBtn.classList.toggle("opacity-70", isBusy);
+        refs.sendBtn.classList.toggle("cursor-not-allowed", isBusy);
+      }
+
+      async function fetchStatus(path, options = {})
+      {
+        const url = state.apiBase + path;
+        try
+        {
+          const response = await fetch(url, options);
+          let payload = null;
+          let detail = "";
+
+          try
+          {
+            payload = await response.json();
+          } catch (_error)
+          {
+            payload = null;
+          }
+
+          if (payload && payload.detail)
+          {
+            detail = typeof payload.detail === "string" ? payload.detail : JSON.stringify(payload.detail);
+          }
+
+          return {
+            ok: response.ok,
+            status: response.status,
+            payload,
+            detail
+          };
+        } catch (error)
+        {
+          return {
+            ok: false,
+            status: 0,
+            payload: null,
+            detail: String(error)
+          };
+        }
+      }
+
+      function appendSystemMessage(text)
+      {
+        appendMessage("assistant", text, "System note", false);
+      }
+
+      function appendMessage(role, text, meta, pending = false)
+      {
+        const article = document.createElement("article");
+        article.className = "message-enter flex " + (role === "user" ? "justify-end" : "justify-start");
+
+        const card = document.createElement("div");
+        card.className =
+          role === "user"
+            ? "max-w-2xl rounded-2xl rounded-tr-sm bg-primary text-on-primary px-4 py-3 shadow-[0_8px_20px_rgba(154,64,33,0.18)]"
+            : "max-w-2xl rounded-2xl rounded-tl-sm bg-surface-container-highest text-on-background px-4 py-3 ghost-border";
+
+        if (pending)
+        {
+          card.classList.add("opacity-70", "animate-pulse");
+        }
+
+        const label = document.createElement("p");
+        label.className =
+          "text-[11px] uppercase tracking-wider font-semibold mb-2 " +
+          (role === "user" ? "text-on-primary/80" : "text-secondary");
+        label.textContent = role === "user" ? "You" : "Claude";
+
+        const body = document.createElement("p");
+        body.className = "text-sm leading-relaxed whitespace-pre-wrap";
+        body.textContent = text;
+
+        const foot = document.createElement("p");
+        foot.className =
+          "text-[11px] mt-2 " + (role === "user" ? "text-on-primary/70" : "text-secondary/90");
+        foot.textContent = meta;
+
+        card.appendChild(label);
+        card.appendChild(body);
+        card.appendChild(foot);
+        article.appendChild(card);
+        refs.messages.appendChild(article);
+        refs.messages.scrollTop = refs.messages.scrollHeight;
+
+        return { article, card, body, foot };
+      }
+
+      function fillPendingMessage(messageRef, text, meta, success = true)
+      {
+        messageRef.card.classList.remove("animate-pulse", "opacity-70");
+        messageRef.body.textContent = text;
+        messageRef.foot.textContent = meta;
+
+        if (!success)
+        {
+          messageRef.card.classList.add("bg-[rgba(186,26,26,0.08)]");
+        }
+      }
+
+      function friendlyError(status, detail)
+      {
+        if (status === 401)
+        {
+          return "401 Unauthorized: missing or invalid X-API-Key.";
+        }
+        if (status === 429)
+        {
+          return "429 Too Many Requests: rate limit reached. Wait around 60 seconds and retry.";
+        }
+        if (status === 503)
+        {
+          return "503 Service Unavailable: backend is not ready. Check Redis and /ready.";
+        }
+        if (status === 422)
+        {
+          return "422 Unprocessable Entity: request body is invalid. Ensure user_id and question are present.";
+        }
+        if (status === 0)
+        {
+          return "Network error: request could not reach backend. Verify API base URL and CORS origin.";
+        }
+        return "Request failed with HTTP " + status + (detail ? ": " + detail : ".");
+      }
+
+      function setStatus(node, text, tone)
+      {
+        node.textContent = text;
+        node.dataset.tone = tone;
+      }
+    })();
+  </script>
+</body>
+
+</html>
