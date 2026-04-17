@@ -1,118 +1,110 @@
-# Day 12 Lab - Mission Answers
+# Day 12 Lab - Cau Tra Loi Mission
 
-Student Name: Huynh Van Nghia  
-Student ID: 2A202600085  
-Date: 2026-04-17
+Sinh vien: Huynh Van Nghia  
+MSSV: 2A202600085  
+Ngay: 2026-04-17
 
-## Part 1: Localhost vs Production
+## Phan 1: Localhost vs Production
 
-### Exercise 1.1: Anti-patterns found
-1. Secrets can be hardcoded or loaded unsafely in localhost-style apps.
-2. Missing readiness checks makes cloud orchestration unreliable.
-3. In-memory state breaks when scaling to multiple instances.
-4. No auth/rate/budget protection exposes API abuse risk.
-5. Weak shutdown handling can drop in-flight requests during deploy.
+### Bai 1.1: Cac anti-pattern da tim thay
+1. Secret de hardcode trong code hoac config khong an toan.
+2. Thieu readiness check nen cloud kho dieu phoi traffic an toan.
+3. Luu state trong memory cua process nen scale ngang de mat context.
+4. Khong co lop bao ve auth/rate/cost de chong lam dung API.
+5. Shutdown khong gracefull co the lam rot request khi deploy.
 
-### Exercise 1.2: Basic version run result
-- Local basic app runs and is useful for concept learning.
-- It is not enough for production because reliability and security controls are incomplete.
+### Bai 1.2: Ket qua chay ban basic
+- Ban basic chay duoc de hoc concept.
+- Tuy nhien chua dat muc production vi thieu cac co che reliability va security.
 
-### Exercise 1.3: Comparison table
-| Feature | Develop | Production | Why Important? |
+### Bai 1.3: Bang so sanh
+| Tinh nang | Develop | Production | Vi sao quan trong |
 |---|---|---|---|
-| Config | Minimal/default | Env-driven settings | One codebase for many environments |
-| Secrets | Easy to leak | Managed by env vars/platform secrets | Security and compliance |
-| Health | Often only liveness | Liveness + readiness | Safe rollout and restart |
-| Logging | Plain text/print | Structured logs | Better monitoring and debugging |
-| State | In-process memory | Redis-backed stateless design | Horizontal scaling support |
-| Shutdown | Abrupt stop | Graceful shutdown hooks | Fewer failed requests |
+| Cau hinh | Gia tri mac dinh don gian | Theo bien moi truong | Cung mot codebase chay nhieu moi truong |
+| Secret | De ro ri | Quan ly bang env var/platform secret | An toan va de rotate |
+| Kiem tra song | Thuong chi co liveness | Co health + readiness | Tranh route traffic vao pod chua san sang |
+| Logging | print/thieu cau truc | Log co cau truc | De monitor va truy vet loi |
+| State | Nho trong process | Redis stateless | Ho tro scale ngang |
+| Shutdown | Dot ngot | Graceful shutdown | Giam loi khi restart/deploy |
 
-## Part 2: Docker
+## Phan 2: Docker
 
-### Exercise 2.1: Dockerfile questions
-1. Base image: python:3.11-slim (production multi-stage).
+### Bai 2.1: Tra loi ve Dockerfile
+1. Base image: python:3.11-slim (multi-stage cho production).
 2. Working directory: /app.
-3. Why copy requirements first: improves cache reuse for dependency layer.
-4. Why multi-stage: smaller runtime image and reduced attack surface.
+3. Copy requirements truoc de tan dung Docker layer cache.
+4. Multi-stage de giam kich thuoc image va giam attack surface.
 
-### Exercise 2.2: Build and run notes
-- Local run command: docker compose up -d --build
-- Production Dockerfile uses non-root user and HEALTHCHECK.
+### Bai 2.2: Ghi chu build va run
+- Lenh chay local: docker compose up -d --build
+- Dockerfile production co non-root user va HEALTHCHECK.
 
-### Exercise 2.3: Image size comparison
-- Develop: ~800 MB (course baseline; local re-build blocked by Docker Hub unauthenticated pull rate limit 429 at report time).
-- Production: 166 MB (measured from local image 06-lab-complete-agent:latest).
-- Difference (baseline estimate): ~79.25% smaller.
+### Bai 2.3: So sanh kich thuoc image
+- Develop: ~800 MB (theo baseline bai lab; local build lai bi Docker Hub rate-limit 429).
+- Production: 166 MB (do duoc tu image 06-lab-complete-agent:latest).
+- Chenh lech uoc tinh: ~79.25% nho hon.
 
-## Part 3: Cloud Deployment
+## Phan 3: Cloud Deployment
 
-### Exercise 3.1: Deployed service
-- Platform used: Render
+### Bai 3.1: Trang thai deploy
+- Nen tang: Render
 - URL: https://twoa202600085-huynhvannghia-day12.onrender.com
-- Status at report time:
-  - GET /health -> 200, status=degraded
-  - GET /ready -> 503, detail=Service is not initialized
+- Trang thai luc cap nhat:
+  - GET /health -> 200
+  - GET /ready -> 200
+  - health.checks.redis -> true
+  - health.checks.llm -> openai
 
-### Exercise 3.2: Deployment notes
-- Root cause of /ready failure: Redis required but REDIS_URL points to wrong value (must be Render Internal Redis URL, not HTTP app URL).
-- Required fix on Render:
-  1. Create Redis service (Key Value).
-  2. Set REDIS_URL to Internal Redis URL.
-  3. Keep REQUIRE_REDIS=true.
-  4. Redeploy.
+### Bai 3.2: Ghi chu cau hinh Render
+- REDIS_INTERNAL_URL phai la Internal Redis URL (redis:// hoac rediss://).
+- OPENAI_API_KEY bat buoc co neu chay production voi LLM that.
+- AGENT_API_KEY phai la key rieng, khong de gia tri default.
 
-## Part 4: API Security
+## Phan 4: API Security
 
-### Exercise 4.1-4.3: Test results
+### Bai 4.1-4.3: Ket qua test
 
-#### Render tests
-- Health:
-  - HTTP 200
-  - Body includes redis=false and redis_required=true
-- Readiness:
-  - HTTP 503
-  - detail: Service is not initialized
-- Missing API key on /ask (JSON body serialized correctly):
-  - HTTP 401 (PASS)
+#### Test tren Render
+- GET /health: 200
+- GET /ready: 200
+- POST /ask khong co X-API-Key: 401 (PASS)
 
-#### Local tests (06-lab-complete)
-- Missing API key on /ask: HTTP 401 (PASS)
-- Valid API key on /ask: HTTP 200 (PASS)
-- Readiness when Redis stopped: HTTP 503 (PASS)
-- Readiness after Redis restart: HTTP 200 (PASS)
-- Rate-limit burst test (40 requests): {200: 21, 429: 19} (PASS)
+#### Test local (06-lab-complete)
+- /ask khong key: 401 (PASS)
+- /ask co key: 200 (PASS)
+- Rate limit lan chay gan nhat (25 request): {"200":20,"429":5} (PASS)
+- /ready khi stop redis: 503 (PASS)
+- /ready sau khi start redis: 200 (PASS)
 
-### Exercise 4.4: Cost guard implementation
-- Implemented in app/cost_guard.py.
-- Enforces monthly budget via MONTHLY_BUDGET_USD.
-- Usage tracked by month key; blocks requests when budget is exceeded.
-- Monthly spend is exposed via metrics endpoint.
+### Bai 4.4: Cost guard
+- Trien khai tai app/cost_guard.py.
+- Gioi han ngan sach theo thang qua MONTHLY_BUDGET_USD.
+- Tinh chi phi theo token input/output.
+- Vuot budget se chan request va tra loi phu hop.
 
-## Part 5: Scaling & Reliability
+## Phan 5: Scaling & Reliability
 
-### Exercise 5.1: Health and readiness
-- /health: returns service and dependency status.
-- /ready: blocks traffic when startup conditions are not satisfied.
+### Bai 5.1: Health va readiness
+- /health tra ve trang thai service, redis, llm, uptime.
+- /ready chi tra 200 khi dependency da san sang.
 
-### Exercise 5.2: Graceful shutdown
-- Application uses lifespan and signal handling strategy to mark not-ready and shutdown cleanly.
+### Bai 5.2: Graceful shutdown
+- Ung dung co xu ly signal de danh dau not-ready va shutdown dung cach.
 
-### Exercise 5.3: Stateless design
-- Conversation history is stored by user_id in Redis when available.
-- Fallback memory store exists for local resilience, but production requires Redis.
+### Bai 5.3: Stateless
+- Lich su hoi thoai theo user_id luu tren Redis.
+- Process co the scale ngang ma van giu duoc context.
 
-### Exercise 5.4: Context continuity test
-- Test sequence:
-  1. user_id fixed, question: My name is Alice
-  2. same user_id, question: What did I just say?
-- Result:
-  - CTX_ANSWER=Your previous message was: "My name is Alice"
+### Bai 5.4: Test context continuity
+- Buoc 1: user_id co dinh, gui "My name is Alice".
+- Buoc 2: cung user_id, gui "What did I just say?".
+- Ket qua: Tra ve dung noi dung truoc do.
 
-### Exercise 5.5: Reliability conclusion
-- Core production controls are implemented and validated locally.
-- Current cloud blocker is Redis wiring on Render; once REDIS_URL is corrected, /ready should return 200.
+### Bai 5.5: Ket luan reliability
+- He thong da co day du auth, rate, budget, health, readiness, stateless.
+- Luong test local va cloud deu dat voi cac endpoint chinh.
 
-## Final Summary
-- Source code is production-oriented and passes local security/reliability tests.
-- Render deployment is public and reachable.
-- Remaining action before final grading: set correct Internal Redis URL and capture final screenshots.
+## Tong ket
+- Source code dat huong production va da verify duong chay chinh.
+- Deployment Render truy cap duoc cong khai.
+- Viec con lai truoc khi nop: them screenshot minh chung vao report/images.
