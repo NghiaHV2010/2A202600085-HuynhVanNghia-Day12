@@ -27,6 +27,11 @@ try:
 except Exception:
     redis = None
 
+try:
+    from openai import AsyncOpenAI
+except Exception:
+    AsyncOpenAI = None
+
 
 def _configure_logging() -> None:
     level = getattr(logging, settings.log_level.upper(), logging.INFO)
@@ -51,17 +56,73 @@ rate_limiter = RateLimiter(max_requests=settings.rate_limit_per_minute, window_s
 cost_guard = CostGuard(monthly_budget_usd=settings.monthly_budget_usd)
 _memory_history: dict[str, list[dict[str, str]]] = {}
 
+openai_client: Any | None = None
+if settings.openai_api_key and AsyncOpenAI is not None:
+    openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
+
+
+def _llm_is_ready() -> bool:
+    if not settings.openai_api_key:
+        return True
+    return openai_client is not None
+
+
+def _llm_status() -> str:
+    if settings.openai_api_key and openai_client is not None:
+        return "openai"
+    if settings.openai_api_key and openai_client is None:
+        return "misconfigured"
+    return "mock"
+
+
+def _bind_redis_dependencies(client: Any | None) -> None:
+    rate_limiter.set_redis_client(client)
+    cost_guard.set_redis_client(client)
+
 
 def _connect_redis() -> Any | None:
     if redis is None or not settings.redis_url:
         return None
+
+    if not settings.redis_url.startswith(("redis://", "rediss://")):
+        logger.error(
+            json.dumps(
+                {
+                    "event": "redis_url_invalid",
+                    "detail": "REDIS_URL must start with redis:// or rediss://",
+                }
+            )
+        )
+        return None
+
     try:
-        client = redis.from_url(settings.redis_url, decode_responses=True)
+        client = redis.from_url(
+            settings.redis_url,
+            decode_responses=True,
+            socket_connect_timeout=3,
+            socket_timeout=3,
+        )
         client.ping()
         return client
     except Exception as exc:
         logger.warning(json.dumps({"event": "redis_unavailable", "detail": str(exc)}))
         return None
+
+
+def _refresh_redis_connection() -> bool:
+    global redis_client
+
+    if _redis_is_healthy():
+        return True
+
+    client = _connect_redis()
+    redis_client = client
+    _bind_redis_dependencies(redis_client)
+
+    if client is not None:
+        logger.info(json.dumps({"event": "redis_connected"}))
+        return True
+    return False
 
 
 def _history_key(user_id: str) -> str:
@@ -107,7 +168,32 @@ def _append_history(user_id: str, role: str, content: str) -> None:
         _memory_history[user_id] = history[-settings.max_history_messages:]
 
 
-def _answer_with_context(question: str, history: list[dict[str, str]]) -> str:
+async def _ask_llm(question: str) -> tuple[str, str]:
+    if openai_client is None:
+        return llm_ask(question), "mock-llm"
+
+    try:
+        completion = await openai_client.chat.completions.create(
+            model=settings.llm_model,
+            messages=[{"role": "user", "content": question}],
+            temperature=0.2,
+        )
+    except Exception as exc:
+        logger.error(json.dumps({"event": "llm_error", "detail": str(exc)}))
+        raise HTTPException(status_code=502, detail="LLM provider request failed.")
+
+    answer = ""
+    if completion.choices:
+        answer = (completion.choices[0].message.content or "").strip()
+
+    if not answer:
+        raise HTTPException(status_code=502, detail="LLM provider returned empty response.")
+
+    model_name = completion.model or settings.llm_model
+    return answer, model_name
+
+
+async def _answer_with_context(question: str, history: list[dict[str, str]]) -> tuple[str, str]:
     lower_question = question.lower().strip()
     context_triggers = {
         "what did i just say",
@@ -118,9 +204,9 @@ def _answer_with_context(question: str, history: list[dict[str, str]]) -> str:
     if any(trigger in lower_question for trigger in context_triggers):
         for item in reversed(history):
             if item.get("role") == "user":
-                return f'Your previous message was: "{item.get("content", "")}"'
-        return "I do not have previous user messages in this session yet."
-    return llm_ask(question)
+                return f'Your previous message was: "{item.get("content", "")}"', "context-memory"
+        return "I do not have previous user messages in this session yet.", "context-memory"
+    return await _ask_llm(question)
 
 
 def _redis_is_healthy() -> bool:
@@ -149,12 +235,13 @@ async def lifespan(app: FastAPI):
         )
     )
 
-    redis_client = _connect_redis()
-    rate_limiter.set_redis_client(redis_client)
-    cost_guard.set_redis_client(redis_client)
+    redis_connected = _refresh_redis_connection()
 
-    if settings.require_redis and redis_client is None:
+    if settings.require_redis and not redis_connected:
         logger.error(json.dumps({"event": "startup_failed", "detail": "Redis is required"}))
+        _is_ready = False
+    elif not _llm_is_ready():
+        logger.error(json.dumps({"event": "startup_failed", "detail": "LLM client is not initialized"}))
         _is_ready = False
     else:
         _is_ready = True
@@ -168,6 +255,8 @@ async def lifespan(app: FastAPI):
             redis_client.close()
         except Exception:
             pass
+    redis_client = None
+    _bind_redis_dependencies(None)
     logger.info(json.dumps({"event": "shutdown", "signal": _shutdown_signal}))
 
 
@@ -264,11 +353,19 @@ async def ask_agent(
     request: Request,
     _api_key: str = Depends(verify_api_key),
 ) -> AskResponse:
+    if settings.require_redis and not (_redis_is_healthy() or _refresh_redis_connection()):
+        raise HTTPException(
+            status_code=503,
+            detail="Redis is not available. Set REDIS_URL to your Render Internal Redis URL.",
+        )
+    if not _llm_is_ready():
+        raise HTTPException(status_code=503, detail="LLM is not initialized.")
+
     rate_info = rate_limiter.check(body.user_id)
     cost_guard.check_budget()
 
     history_before = _load_history(body.user_id)
-    answer = _answer_with_context(body.question, history_before)
+    answer, model_name = await _answer_with_context(body.question, history_before)
 
     _append_history(body.user_id, "user", body.question)
     _append_history(body.user_id, "assistant", answer)
@@ -300,7 +397,7 @@ async def ask_agent(
         user_id=body.user_id,
         question=body.question,
         answer=answer,
-        model=settings.llm_model,
+        model=model_name,
         timestamp=datetime.now(timezone.utc).isoformat(),
         turn=user_turns,
         served_by=INSTANCE_ID,
@@ -319,7 +416,7 @@ def get_history(user_id: str, _api_key: str = Depends(verify_api_key)) -> dict[s
 
 @app.get("/health", tags=["Operations"])
 def health() -> dict[str, Any]:
-    redis_ok = _redis_is_healthy()
+    redis_ok = _redis_is_healthy() or _refresh_redis_connection()
     redis_required = bool(settings.require_redis)
     status = "ok"
     if redis_required and not redis_ok:
@@ -335,7 +432,7 @@ def health() -> dict[str, Any]:
         "checks": {
             "redis": redis_ok,
             "redis_required": redis_required,
-            "llm": "mock" if not settings.openai_api_key else "configured",
+            "llm": _llm_status(),
         },
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
@@ -343,10 +440,24 @@ def health() -> dict[str, Any]:
 
 @app.get("/ready", tags=["Operations"])
 def ready() -> dict[str, Any]:
-    if not _is_ready:
-        raise HTTPException(status_code=503, detail="Service is not initialized")
-    if settings.require_redis and not _redis_is_healthy():
-        raise HTTPException(status_code=503, detail="Redis is not available")
+    global _is_ready
+
+    if _shutdown_signal is not None:
+        _is_ready = False
+        raise HTTPException(status_code=503, detail="Service is shutting down")
+
+    if settings.require_redis and not (_redis_is_healthy() or _refresh_redis_connection()):
+        _is_ready = False
+        raise HTTPException(
+            status_code=503,
+            detail="Redis is not available. Set REDIS_URL to your Render Internal Redis URL.",
+        )
+
+    if not _llm_is_ready():
+        _is_ready = False
+        raise HTTPException(status_code=503, detail="LLM is not initialized. Check OPENAI_API_KEY.")
+
+    _is_ready = True
     return {"ready": True, "instance_id": INSTANCE_ID}
 
 
@@ -360,7 +471,7 @@ def metrics(_api_key: str = Depends(verify_api_key)) -> dict[str, Any]:
         "monthly_spent_usd": round(spent, 6),
         "monthly_budget_usd": settings.monthly_budget_usd,
         "budget_used_pct": round((spent / settings.monthly_budget_usd) * 100, 2),
-        "redis_connected": _redis_is_healthy(),
+        "redis_connected": _redis_is_healthy() or _refresh_redis_connection(),
     }
 
 

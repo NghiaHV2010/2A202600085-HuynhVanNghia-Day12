@@ -23,5 +23,7 @@ services:
         value: "10"
       - key: REQUIRE_REDIS
         value: "true"
+      - key: REDIS_INTERNAL_URL
+        sync: false
       - key: REDIS_URL
         sync: false
